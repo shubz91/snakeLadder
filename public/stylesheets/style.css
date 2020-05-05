@@ -1,0 +1,70 @@
+body {
+  padding: 50px;
+  font: 14px "Lucida Grande", Helvetica, Arial, sans-serif;
+}
+
+a {
+  color: #00B7FF;
+}
+
+.optionList{
+  margin:0px;
+  padding:0px;
+  width:100%;
+}
+.optionList>li{
+  list-style:none;
+  width:200px;
+  padding:10px;
+  width:100%;
+  border-bottom:5px solid #aaa;
+  box-sizing: border-box;
+  margin-bottom:20px;
+  cursor: pointer;
+}
+.optionList>li:hover{
+  background: rgba(0,0,0,0.1);
+  border-bottom:5px solid #000;
+}
+
+
+
+.waiting{
+  animation: waiting 1s infinite linear;
+}
+@keyframes waiting {
+	0% {
+		/* box-shadow:0px 0px 0px 0px rgba(0,0,0,1); */
+    /* background: rgba(0,0,0,0); */
+    opacity:1;
+	}
+	50% {
+		/* box-shadow:0px 0px 10px 0px rgba(0,0,0,1); */
+    /* background: rgba(0,0,0,0.1); */
+    opacity:0;
+	}
+	100% {
+		/* box-shadow:0px 0px 0px 0px rgba(0,0,0,1); */
+    /* background: rgba(0,0,0,0); */
+    opacity:1;
+	}
+}
+
+
+.swing li {
+  opacity: 0;
+  transform: rotateY(-90deg);
+  height:0px;
+  transition: all 0.5s cubic-bezier(.36,-0.64,.34,1.76);
+  overflow: hidden;
+  padding:0px;
+  font-size: 10;
+}
+
+.swing li.show {
+  opacity: 1;
+  padding:5px;
+  transform: none;
+  height:auto;
+  transition: all 0.5s cubic-bezier(.36,-0.64,.34,1.76);
+}

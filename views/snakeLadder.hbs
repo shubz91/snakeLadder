@@ -1,0 +1,340 @@
+<link rel='stylesheet' href='/stylesheets/snakeLadder.css' />
+<script type="text/javascript" src="javascripts/snakeLadder.js"></script>
+<script type="text/javascript" src="javascripts/players.js"></script>
+<script type="text/javascript" src="javascripts/dice.js"></script>
+<script type="text/javascript" src="javascripts/chatMessages.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script type="text/javascript">
+  var b=null;
+  var d=null;
+  var nxtPlayerId=0;
+  var p=player_data;
+  var gId="{{gameId}}";
+  var gameStats={};
+  var socket = null;
+  var cm=null;
+  var myLastMsg="";
+  function restart(emit=false){
+    if(emit){socket.emit("restart",{});}
+    loadWithPostData(window.location.href,{
+      user_name:"{{user.name}}",
+      isHost:"{{user.isHost}}",
+      gameId:gId
+    });
+  }
+  function loadWithPostData(loc,obj){
+    var f = document.createElement("form");
+    f.setAttribute('method',"post");
+    f.setAttribute('action',loc);
+    for(k in obj){
+      var i = document.createElement("input"); //input element, text
+      i.setAttribute('type',"text");
+      i.setAttribute('name',k);
+      i.setAttribute('value',obj[k]);
+      f.appendChild(i);
+    }
+    document.body.appendChild(f);
+    f.submit();
+  }
+  function init(){
+    socket = io("/sL");
+    socket.on('connect', function () {
+      if("{{user.isHost}}"=="1"){
+        b=snakeLadder.renderboard(document.getElementById("board"));
+        var gd=b.getConfig();
+        gd.gameId="{{gameId}}";
+        socket.emit("gameData",gd);
+        socket.on("gameId",function(data){
+          gId=data;
+          document.getElementById("share_link").value=window.location.href + "/" + data;
+        });
+      }
+      else{
+        socket.emit("joinGame",{gameId:"{{gameId}}"});
+        socket.on('gameData',function(data){
+          b=snakeLadder.renderboard(document.getElementById("board"),data);
+        });
+
+        socket.on("restart",function(data){
+          restart();
+        });
+        document.getElementById("share_link").value=window.location.href + "/{{gameId}}";
+      }
+      socket.emit('userData', {name:"{{{user.name}}}"});
+      socket.on('users',function(data){
+        p.removePlayer();
+        for(var key in data){
+          p.addPlayer(key,data[key].name,data[key].type,data[key].color);
+        }
+        updateDashboard(p.getPlayers());
+      });
+      socket.on('action',function(data){
+        switch(data.act){
+          case "dice":
+            d.rollTo(data.dV,function(data){
+              b.movePlayerBy(data.playerId,data.mV);
+              if(data.msg!=""){
+                if(myLastMsg!=data.msg){
+                  cm.addMessage(data.msg);
+                }
+                myLastMsg=data.msg;
+              }
+              setWaitingPlayer(data.nxtPlayerId);
+            },data);
+          break;
+          case "nextPlayer":
+            setWaitingPlayer(data.nxtPlayerId);
+          break;
+          case "start":
+            d=dice.render(document.getElementById("board"));
+            document.getElementById("board").dice.onclick=rollDice;
+            b.start_game(p.getPlayers());
+            setWaitingPlayer(data.nxtPlayerId);
+            document.getElementById("share_link_box").style.display="none";
+          break;
+        }
+      });
+      socket.on('sysMsg',function(data){
+        if(data.code=="ALERT"){
+          alert(data.msg);
+          // console.log(document.location.hostname);
+          goToHome();
+        }
+        if(data.code=="FUNCCOMPLETE"){
+          gameOnComplete(data.data);
+        }
+      });
+      socket.on('gameStats',function(data){
+        gameStats=data;
+        setTimeout(()=>{
+          updateDashboard(p.getPlayers(),gameStats);
+        },1000);
+      });
+      socket.on('user_msg',function(data){
+        var pl=p.getPlayers()[data.playerId];
+        var rgb=hexToRgb(pl.color);
+        var el=cm.addMessage(data.value,{
+          background:"rgba(" + rgb.r + "," + rgb.g + "," + rgb.b + ",0.2)",
+          sender:pl.name
+        });
+      });
+      cm=chatMessenger.initialize(document.getElementById("msg_field"));
+    });
+    document.getElementById("chat_msg").addEventListener("keydown", function(e) {
+        if (!e) { var e = window.event; }
+        if (e.keyCode == 13) {
+          e.preventDefault();
+          sendChat();
+        }
+    }, false);
+  }
+  function setWaitingPlayer(id){
+    nxtPlayerId=id;
+    try{
+      for(k in p.getPlayers()){
+        document.getElementById("piece" + k).classList.remove("waiting");
+      }
+      if(id){
+        document.getElementById("piece" + id).classList.add("waiting");
+      }
+    }
+    catch(e){
+      console.log("Error Occurred while setting waiting player : ",e)
+    }
+  }
+  function genRandomBoard(){
+    b=snakeLadder.renderboard(document.getElementById("board"));
+  }
+  function rollDice(){
+    socket.emit('action', {act:"dice", pos:b.players[nxtPlayerId].cell});
+  }
+  function updateDashboard(pls,gS={"Results":{}}){
+    var elem=document.getElementById("player_det");
+    elem.innerHTML="";
+    for(k in pls){
+      var el=document.createElement("li");
+      el.setAttribute("class","list-group-item li_sm_padding");
+      el.innerHTML=pls[k].name;
+      el.id="dashboard" + k;
+      var elc=document.createElement("div");
+      if(gS & "Results" in gS & k in gS.Results){
+        elc.setAttribute("class","player_rank");
+        elc.innerHTML=gS.Results[k];
+      }
+      else{
+        elc.id="piece" + k;
+        elc.setAttribute("class","player_piece");
+        elc.style.background=pls[k].color;
+      }
+
+      // var elwait=document.createElement("span");
+      // elwait.setAttribute("class","spinner-grow text-dark player_wait");
+      // elwait.id="notify" + k;
+      // el.appendChild(elwait);
+      el.appendChild(elc);
+      elem.appendChild(el);
+    }
+  }
+  function gameOnComplete(data){
+    var html='<table class="table"><tr><th>Name</th><th>Finishing Order</th></tr>';
+    var pList=p.getPlayers();
+    var res=[];
+    for(k in gameStats.Results){
+      res[gameStats.Results[k]]=pList[k].name;
+    }
+    for(i in res){
+      html+="<tr><td>" + res[i] + "</td><td>" + i + "</td></tr>";
+    }
+    html+="</table>";
+    document.getElementById("modal_bdy").innerHTML=html;
+    // document.getElementById("ResModal").modal();
+    $("#ResModal").modal();
+  }
+  function start_game(){
+    if(Object.keys(p.getPlayers()).length>1){
+      socket.emit('action', {act:"start"});
+      document.getElementById("gameOptionBox").style.display="none";
+    }
+    else{
+      alert("Need atleast 2 players to start!");
+    }
+  }
+  function change_board(){
+    b=snakeLadder.renderboard(document.getElementById("board"));
+    socket.emit("gameData",b.getConfig());
+  }
+  function copyLink() {
+    var copyText = document.getElementById("share_link");
+    copyText.disabled=false;
+    copyText.select();
+    document.execCommand("copy");
+    copyText.disabled=true;
+  }
+  function sendChat(){
+    var elem=document.getElementById("chat_msg");
+    socket.emit("user_msg",elem.value);
+    elem.value="";
+  }
+  document.body.onload=function(){
+      init();
+  };
+  function hexToRgb(color){
+			var shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+			color = color.replace(shorthandRegex, function(m, r, g, b) {
+					return r + r + g + g + b + b;
+			});
+			var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(color);
+			return (result ? {
+					r: parseInt(result[1], 16),
+					g: parseInt(result[2], 16),
+					b: parseInt(result[3], 16)
+			} : {
+					r: 0,
+					g: 0,
+					b: 0
+			})
+  }
+  function goToHome(){
+    window.location.assign("http://" + window.location.hostname + ":" + window.location.port);
+  }
+</script>
+<style type="text/css">
+.player_piece{
+	z-index: 15;
+	/* box-shadow: 2px 2px 4px rgba(0,0,0,0.5); */
+	border:2px solid rgba(0,0,0,0.5);
+	border-radius: 10px;
+  float: right;
+  width:20px;
+  height:20px;
+}
+.player_wait{
+  width:20px;
+  height:20px;
+}
+.player_rank{
+  float: right;
+  width:20px;
+  height:20px;
+}
+.li_sm_padding{
+  padding:5px 10px;
+}
+#msg_field{
+  width:100%;
+  margin:0px;
+  padding:0px;
+  margin-bottom: 10px;
+  transition: all 0.5s cubic-bezier(.36,-0.64,.34,1.76);
+}
+</style>
+<div class="container-fluid">
+  <div class="row justify-content-md-center">
+    <div class="col-md-12 col-lg-6">
+      <div class="board-cover">
+        <div id="board" class="shadow-lg"></div>
+      </div>
+    </div>
+    <div class="col-md-12 offset-lg-1 col-lg-4">
+      <div class="row jumbotron" style="padding:20px;">
+          <div class="input-group input-group-sm mb-3" id="share_link_box">
+            <div class="input-group-prepend">
+              <span class="input-group-text" id="inputGroup-sizing-sm">Game Link</span>
+            </div>
+            <input type="text" class="form-control" aria-label="Small" aria-describedby="inputGroup-sizing-sm" disabled value="" id="share_link" >
+            <div class="input-group-append">
+              <button class="btn btn-primary" type="button" onclick="copyLink()">Copy</button>
+            </div>
+          </div>
+        <!-- <div class="row justify-content-md-center"> -->
+          <div class="col-12">
+            <ul class="list-group" id="player_det"></ul>
+          </div>
+        <!-- </div> -->
+      </div>
+
+      {{#if user.isHost}}
+      <div class="row jumbotron" style="padding:20px;" id="gameOptionBox">
+        <button class="btn btn-primary col-5" type="button" onclick="start_game()">Start Game</button>
+        <button class="btn btn-primary col-5 offset-2" type="button" onclick="change_board()">Change Board</button>
+      </div>
+      {{/if}}
+      <div class="row jumbotron" style="padding:20px;position:absolute; bottom:0px; width:inherit; margin-bottom:0px" id="gameMsgBox">
+        <div class="input-group input-group-sm " id="chat_group_box">
+          <div id="msg_field"></div>
+          <input type="text" class="form-control" aria-label="Small" aria-describedby="inputGroup-sizing-sm" id="chat_msg">
+          <div class="input-group-append">
+            <button class="btn btn-primary" type="button" onclick="sendChat()">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal" id="ResModal">
+    <div class="modal-dialog">
+      <div class="modal-content">
+
+        <!-- Modal Header -->
+        <div class="modal-header">
+          <h4 class="modal-title">Game Finished!</h4>
+        </div>
+
+        <!-- Modal body -->
+        <div class="modal-body" id="modal_bdy">
+
+        </div>
+
+        <!-- Modal footer -->
+        <div class="modal-footer">
+          {{#if user.isHost}}
+          <button type="button" class="btn btn-primary" data-dismiss="modal" onclick="restart(true)">Play Again</button>
+          {{else}}
+          <button type="button" class="btn btn-primary" data-dismiss="modal" disabled>Waiting for Host to restart</button>
+          {{/if}}
+          <button type="button" class="btn btn-danger" data-dismiss="modal" onclick="goToHome()">Exit</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>

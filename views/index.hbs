@@ -1,0 +1,30 @@
+<h1>{{title}}</h1>
+<script type="text/javascript">
+function fn_game(){
+
+}
+</script>
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-sm-12 col-md-5">
+      <form method="post" action="/snakeLadder">
+        <div class="input-group mb-3">
+          <div class="input-group-prepend">
+            <span class="input-group-text" id="basic-addon1">Your Name</span>
+          </div>
+          <input type="text" name="user_name" class="form-control" placeholder="" aria-label="" aria-describedby="basic-addon1" pattern=".{3,}" required title="3 characters minimum">
+        </div>
+        {{#if gameId}}
+        <input type="hidden" name="gameId" value="{{gameId}}">
+        <input type="hidden" name="isHost" value="">
+        {{else}}
+        <input type="hidden" name="gameId" value="">
+        <input type="hidden" name="isHost" value="1">
+        {{/if}}
+        <button class="btn btn-primary" type="submit">
+          {{#if gameId}}Join Game{{else}}Create Game{{/if}}
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
